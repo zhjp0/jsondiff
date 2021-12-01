@@ -226,3 +226,36 @@ func TestCompareFloatsWithEpsilon(t *testing.T) {
 		}
 	}
 }
+
+
+func TestCustomTag(t *testing.T) {
+	opts := DefaultHTMLOptions()
+	opts.Changed = Tag{Begin: "<changed>", End: "</changed>"}
+	opts.CustomTag = Tag{Begin: `<custom>`, End: `</custom>`}
+	opts.UseCustomTagIfTrue = func(key, valA, valB interface{}) bool {
+		if key == "b" {
+			return true
+		}
+		return false
+	}
+	var customTagCases = []struct{
+		a string
+		b string
+		expected string
+	}{
+		{`{"a": 123, "b": 456}`, `{"a": 124, "b": 457}`, `
+{
+    "a": <changed>123 => 124</changed>,
+    "b": <custom>456 => 457</custom>
+}
+`},
+	}
+	for i, c := range customTagCases {
+		_, diff := Compare([]byte(c.a), []byte(c.b), &opts)
+		expected := strings.TrimSpace(c.expected)
+		if diff != expected {
+			t.Errorf("case %d, got:\n---\n%s\n---\nexpected:\n---\n%s\n---\n", i, diff, expected)
+		}
+	}
+
+}

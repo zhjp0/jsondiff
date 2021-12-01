@@ -43,11 +43,15 @@ type Tag struct {
 }
 
 type Options struct {
+	// Do not highlight this diff when true
+	UseCustomTagIfTrue func(key, valA, valB interface{}) bool
+
 	Normal                Tag
 	Added                 Tag
 	Removed               Tag
 	Changed               Tag
 	Skipped               Tag
+	CustomTag             Tag
 	SkippedArrayElement   func(n int) string
 	SkippedObjectProperty func(n int) string
 	Prefix                string
@@ -280,8 +284,12 @@ func (ctx *context) result(d Difference) {
 	}
 }
 
-func (ctx *context) printMismatch(buf *bytes.Buffer, a, b interface{}) {
-	ctx.tag(buf, &ctx.opts.Changed)
+func (ctx *context) printMismatch(buf *bytes.Buffer, key, a, b interface{}) {
+	if ctx.opts.UseCustomTagIfTrue != nil && ctx.opts.UseCustomTagIfTrue(key, a, b) {
+		ctx.tag(buf, &ctx.opts.CustomTag)
+	} else {
+		ctx.tag(buf, &ctx.opts.Changed)
+	}
 	ctx.writeMismatch(buf, a, b)
 }
 
@@ -315,6 +323,9 @@ type dualIterator interface {
 	count() int
 	next() (a interface{}, aOK bool, b interface{}, bOK bool, i int)
 	key(buf *bytes.Buffer)
+	getKey(i int) interface{}
+	isSlice() bool
+	isMap() bool
 }
 
 type dualSliceIterator struct {
@@ -355,6 +366,18 @@ func (it *dualSliceIterator) key(buf *bytes.Buffer) {
 	// noop
 }
 
+func (it *dualSliceIterator) getKey(i int) interface{} {
+	return strconv.Itoa(i)
+}
+
+func (it *dualSliceIterator) isSlice() bool {
+	return true
+}
+
+func (it *dualSliceIterator) isMap() bool {
+	return false
+}
+
 type dualMapIterator struct {
 	a       map[string]interface{}
 	b       map[string]interface{}
@@ -388,6 +411,21 @@ func (it *dualMapIterator) key(buf *bytes.Buffer) {
 	key := it.keys[it.current]
 	buf.WriteString(strconv.Quote(key))
 	buf.WriteString(": ")
+}
+
+func (it *dualMapIterator) getKey(i int) interface{} {
+	if i < len(it.keys) {
+		return it.keys[i]
+	}
+	return ""
+}
+
+func (it *dualMapIterator) isSlice() bool {
+	return false
+}
+
+func (it *dualMapIterator) isMap() bool {
+	return true
 }
 
 func makeDualMapIterator(a, b map[string]interface{}) dualIterator {
@@ -434,7 +472,7 @@ func (ctx *context) collectDiffs(it dualIterator) (diffs []string, last int) {
 		}
 		var diff string
 		if aok && bok {
-			diff = ctx.printDiff(a, b)
+			diff = ctx.printDiff(it.getKey(i), a, b)
 		}
 		if len(diff) > 0 || aok != bok {
 			last = i
@@ -521,7 +559,7 @@ func (ctx *context) printCollectionDiff(cfg *collectionConfig, it dualIterator) 
 	return ctx.finalize(&buf)
 }
 
-func (ctx *context) printDiff(a, b interface{}) string {
+func (ctx *context) printDiff(key, a, b interface{}) string {
 	var buf bytes.Buffer
 
 	if a == nil || b == nil {
@@ -537,7 +575,7 @@ func (ctx *context) printDiff(a, b interface{}) string {
 			}
 		} else {
 			// mismatch
-			ctx.printMismatch(&buf, a, b)
+			ctx.printMismatch(&buf, key, a, b)
 			ctx.result(NoMatch)
 		}
 		return ctx.finalize(&buf)
@@ -548,7 +586,7 @@ func (ctx *context) printDiff(a, b interface{}) string {
 	if ka != kb {
 		// Go type does not match, this is definitely a mismatch since
 		// we parse JSON into interface{}
-		ctx.printMismatch(&buf, a, b)
+		ctx.printMismatch(&buf, key, a, b)
 		ctx.result(NoMatch)
 		return ctx.finalize(&buf)
 	}
@@ -559,7 +597,7 @@ func (ctx *context) printDiff(a, b interface{}) string {
 	switch ka {
 	case reflect.Bool:
 		if a.(bool) != b.(bool) {
-			ctx.printMismatch(&buf, a, b)
+			ctx.printMismatch(&buf, key, a, b)
 			ctx.result(NoMatch)
 			return ctx.finalize(&buf)
 		}
@@ -569,14 +607,14 @@ func (ctx *context) printDiff(a, b interface{}) string {
 		case json.Number:
 			bb, ok := b.(json.Number)
 			if !ok || !ctx.compareNumbers(aa, bb) {
-				ctx.printMismatch(&buf, a, b)
+				ctx.printMismatch(&buf, key, a, b)
 				ctx.result(NoMatch)
 				return ctx.finalize(&buf)
 			}
 		case string:
 			bb, ok := b.(string)
 			if !ok || aa != bb {
-				ctx.printMismatch(&buf, a, b)
+				ctx.printMismatch(&buf, key, a, b)
 				ctx.result(NoMatch)
 				return ctx.finalize(&buf)
 			}
@@ -652,6 +690,6 @@ func Compare(a, b []byte, opts *Options) (Difference, string) {
 	var buf bytes.Buffer
 
 	ctx := context{opts: opts}
-	buf.WriteString(ctx.printDiff(av, bv))
+	buf.WriteString(ctx.printDiff(nil, av, bv))
 	return ctx.diff, buf.String()
 }
