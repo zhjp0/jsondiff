@@ -227,7 +227,6 @@ func TestCompareFloatsWithEpsilon(t *testing.T) {
 	}
 }
 
-
 func TestCustomTag(t *testing.T) {
 	opts := DefaultHTMLOptions()
 	opts.Changed = Tag{Begin: "<changed>", End: "</changed>"}
@@ -238,15 +237,16 @@ func TestCustomTag(t *testing.T) {
 		}
 		return false
 	}
-	var customTagCases = []struct{
-		a string
-		b string
+	var customTagCases = []struct {
+		a        string
+		b        string
 		expected string
 	}{
-		{`{"a": 123, "b": 456}`, `{"a": 124, "b": 457}`, `
+		{`{"a": 123, "b": 456, "c": 789}`, `{"a": 124, "b": 457, "c": {"d": 789}}`, `
 {
     "a": <changed>123 => 124</changed>,
-    "b": <custom>456 => 457</custom>
+    "b": <custom>456 => 457</custom>,
+    "c": <changed>789 => {"d":789}</changed>
 }
 `},
 	}

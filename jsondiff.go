@@ -193,7 +193,7 @@ func (ctx *context) writeValue(buf *bytes.Buffer, v interface{}, full bool) {
 			}
 			buf.WriteString("]")
 		} else {
-			buf.WriteString("[]")
+			buf.WriteString(jsonDumps(vv))
 		}
 	case map[string]interface{}:
 		if full {
@@ -225,7 +225,7 @@ func (ctx *context) writeValue(buf *bytes.Buffer, v interface{}, full bool) {
 			}
 			buf.WriteString("}")
 		} else {
-			buf.WriteString("{}")
+			buf.WriteString(jsonDumps(vv))
 		}
 	default:
 		buf.WriteString("null")
@@ -642,6 +642,11 @@ func (ctx *context) printDiff(key, a, b interface{}) string {
 		ctx.result(FullMatch)
 	}
 	return ctx.finalize(&buf)
+}
+
+func jsonDumps(v interface{}) string {
+	s, _ := json.Marshal(v)
+	return string(s)
 }
 
 // Compares two JSON documents using given options. Returns difference type and
